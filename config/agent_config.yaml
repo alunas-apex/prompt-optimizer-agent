@@ -1,0 +1,41 @@
+# Prompt Optimizer Agent — configuration
+# ========================================
+
+model_defaults:
+  temperature: 0.7
+  max_tokens: 1024
+  default_provider: anthropic
+  default_model: claude-sonnet-4-20250514
+
+cost:
+  # Rates in USD per 1 000 tokens
+  anthropic_input: 0.003
+  anthropic_output: 0.015
+  openai_input: 0.005
+  openai_output: 0.015
+  google_input: 0.00035
+  google_output: 0.00105
+  perplexity_input: 0.001
+  perplexity_output: 0.001
+
+logging:
+  level: INFO
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  # file: logs/agent.log  # uncomment to write to a file
+
+mcp_servers:
+  - name: llm-router
+    module: mcp-servers/llm-router/server.py
+    description: Routes prompts to multiple LLM providers
+  - name: prompt-analyzer
+    module: mcp-servers/prompt-analyzer/server.py
+    description: Analyzes and optimizes prompt quality
+  - name: results-evaluator
+    module: mcp-servers/results-evaluator/server.py
+    description: Evaluates and compares LLM outputs
+
+# How many optimise → test → evaluate rounds to run
+optimization_rounds: 3
+
+# Whether to call all LLM providers in parallel during evaluation
+parallel_evaluation: true
