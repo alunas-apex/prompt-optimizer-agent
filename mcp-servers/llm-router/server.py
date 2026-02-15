@@ -20,7 +20,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("llm-router", description="Routes prompts to multiple LLM providers")
+mcp = FastMCP("llm-router", instructions="Routes prompts to multiple LLM providers")
 
 
 # ---------------------------------------------------------------------------
