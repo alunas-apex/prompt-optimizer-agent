@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("results-evaluator", description="Evaluates and compares LLM outputs")
+mcp = FastMCP("results-evaluator", instructions="Evaluates and compares LLM outputs")
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("prompt-analyzer", description="Analyzes and optimizes prompt quality")
+mcp = FastMCP("prompt-analyzer", instructions="Analyzes and optimizes prompt quality")
 
 
 # ---------------------------------------------------------------------------
