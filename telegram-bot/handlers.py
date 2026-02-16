@@ -248,7 +248,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /analyze <prompt> — analyze prompt quality."""
-    prompt = " ".join(context.args) if context.args else ""
+    text = update.message.text or ""
+    prompt = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not prompt:
         await update.message.reply_text(
             "Please provide a prompt to analyze\\.\n\nUsage: `/analyze write me a story about AI`",
@@ -263,7 +264,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def optimize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /optimize <prompt> — run full optimization."""
-    prompt = " ".join(context.args) if context.args else ""
+    text = update.message.text or ""
+    prompt = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not prompt:
         await update.message.reply_text(
             "Please provide a prompt to optimize\\.\n\nUsage: `/optimize write me a story about AI`",
