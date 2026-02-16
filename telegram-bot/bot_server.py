@@ -29,10 +29,12 @@ from telegram.ext import (
     filters,
 )
 
-# Ensure the project root is importable
+# Ensure the project root and bot directory are importable
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
+_BOT_DIR = Path(__file__).resolve().parent
+for _p in (_PROJECT_ROOT, _BOT_DIR):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from handlers import (
     analyze_command,
@@ -65,6 +67,9 @@ if not BOT_TOKEN:
 # Telegram Application (python-telegram-bot)
 # ---------------------------------------------------------------------------
 
+_bot_initialized = False
+
+
 def _build_telegram_app() -> Application:
     """Build and configure the python-telegram-bot Application."""
     app = (
@@ -96,13 +101,24 @@ telegram_app = _build_telegram_app()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and shut down the Telegram application."""
-    await telegram_app.initialize()
-    await telegram_app.start()
-    logger.info("Telegram bot started (webhook mode)")
+    global _bot_initialized
+    try:
+        await telegram_app.initialize()
+        await telegram_app.start()
+        _bot_initialized = True
+        logger.info("Telegram bot started (webhook mode)")
+    except Exception:
+        logger.warning(
+            "Could not fully initialize Telegram bot (API may be unreachable). "
+            "The server will start anyway — webhook processing will attempt "
+            "lazy initialization on first request.",
+            exc_info=True,
+        )
     yield
-    await telegram_app.stop()
-    await telegram_app.shutdown()
-    logger.info("Telegram bot stopped")
+    if _bot_initialized:
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+        logger.info("Telegram bot stopped")
 
 
 app = FastAPI(
@@ -115,6 +131,19 @@ app = FastAPI(
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request) -> Response:
     """Receive an update from Telegram and dispatch it."""
+    global _bot_initialized
+
+    # Lazy initialization: retry if startup failed
+    if not _bot_initialized:
+        try:
+            await telegram_app.initialize()
+            await telegram_app.start()
+            _bot_initialized = True
+            logger.info("Telegram bot initialized on first webhook request")
+        except Exception:
+            logger.error("Still cannot initialize Telegram bot", exc_info=True)
+            return Response(status_code=503, content="Bot not initialized")
+
     data = await request.json()
     update = Update.de_json(data=data, bot=telegram_app.bot)
     await telegram_app.process_update(update)
@@ -124,7 +153,11 @@ async def telegram_webhook(request: Request) -> Response:
 @app.get("/health")
 async def health_check():
     """Simple health-check endpoint."""
-    return {"status": "ok", "bot_configured": bool(BOT_TOKEN)}
+    return {
+        "status": "ok",
+        "bot_configured": bool(BOT_TOKEN),
+        "bot_initialized": _bot_initialized,
+    }
 
 
 # ---------------------------------------------------------------------------
