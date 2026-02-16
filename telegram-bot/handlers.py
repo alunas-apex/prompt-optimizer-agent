@@ -132,70 +132,121 @@ def _run_optimization(prompt: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Formatting helpers
+# Formatting helpers — conversational, emoji-rich, mobile-friendly
 # ---------------------------------------------------------------------------
 
-def _format_analysis(analysis: dict[str, Any], prompt: str) -> str:
-    """Format an analysis result as a Telegram-friendly message."""
-    dims = analysis["dimensions"]
-    overall = analysis["overall_score"]
+_TASK_EMOJI = {
+    "creative_writing": "✍️",
+    "code_generation": "💻",
+    "data_analysis": "📊",
+    "summarization": "📝",
+    "question_answering": "🔎",
+    "translation": "🌐",
+    "general": "💬",
+}
 
-    quality = "Poor"
-    if overall >= 80:
-        quality = "Excellent"
-    elif overall >= 65:
-        quality = "Good"
-    elif overall >= 50:
-        quality = "Fair"
+_TASK_LABEL = {
+    "creative_writing": "Creative Writing",
+    "code_generation": "Code Generation",
+    "data_analysis": "Data Analysis",
+    "summarization": "Summarization",
+    "question_answering": "Q&A / Research",
+    "translation": "Translation",
+    "general": "General",
+}
 
-    lines = [
-        f"*Prompt Analysis* — {quality} \\({overall}/100\\)\n",
-        f"Prompt: _{_escape_md(prompt)}_\n",
-        f"Task type: `{analysis['detected_task_type']}`\n",
-        "*Dimension Scores:*",
-        f"  Clarity: {dims['clarity']['score']}/100",
-        f"  Specificity: {dims['specificity']['score']}/100",
-        f"  Structure: {dims['structure']['score']}/100",
-        f"  Completeness: {dims['completeness']['score']}/100",
-    ]
+# temp values are pre-escaped for MarkdownV2 (. → \.)
+_MODEL_ADVICE = {
+    "creative_writing": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.9",
+        "why": "Creative tasks thrive with higher temperature — more vivid and original results",
+    },
+    "code_generation": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.2",
+        "why": "Code needs to be correct, not creative — low temperature keeps it precise and reliable",
+    },
+    "data_analysis": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.3",
+        "why": "Analysis needs consistency — low temperature reduces hallucination",
+    },
+    "summarization": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.3",
+        "why": "Summaries should be faithful to the source — keep temperature low",
+    },
+    "question_answering": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.4",
+        "why": "A slight creative touch helps explain things clearly and engagingly",
+    },
+    "translation": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.3",
+        "why": "Translation prioritises accuracy — low temperature stays close to the original",
+    },
+    "general": {
+        "model": "Claude Sonnet",
+        "temp": "0\\.7",
+        "why": "A balanced temperature works well for general tasks",
+    },
+}
 
-    missing = dims["completeness"].get("missing", [])
-    if missing:
-        lines.append(f"\n*Missing elements:* {', '.join(missing)}")
 
-    return "\n".join(lines)
+def _score_emoji(score: int) -> str:
+    if score >= 75:
+        return "✅"
+    if score >= 50:
+        return "⚠️"
+    return "❌"
 
 
-def _format_optimization(result: dict[str, Any]) -> str:
-    """Format an optimization result as a Telegram-friendly message."""
-    before_score = result["before"]["overall_score"]
-    after_score = result["after"]["overall_score"]
-    diff = after_score - before_score
+def _overall_verdict(score: int) -> str:
+    if score >= 80:
+        return "🌟 *Excellent* — this prompt is sharp and ready to go\\!"
+    if score >= 65:
+        return "✅ *Good* — a couple of tweaks will make it great"
+    if score >= 50:
+        return "⚠️ *Fair* — it'll work, but the AI might miss what you mean"
+    if score >= 30:
+        return "❌ *Needs work* — the AI will probably give you a vague answer"
+    return "🚨 *Very weak* — let's fix this together"
 
-    diff_str = f"\\+{diff}" if diff >= 0 else f"\\-{abs(diff)}"
-    lines = [
-        "*Prompt Optimization Results*\n",
-        f"Task type: `{result['detected_task_type']}`\n",
-        f"*Original prompt:*\n_{_escape_md(result['original_prompt'])}_\n",
-        f"*Optimized prompt:*\n```\n{result['optimized_prompt']}\n```\n",
-        f"*Score: {before_score} → {after_score} \\({diff_str}\\)*\n",
-        "*Breakdown:*",
-    ]
 
-    for dim_name in ("clarity", "specificity", "structure", "completeness"):
-        b = result["before"]["dimensions"][dim_name]["score"]
-        a = result["after"]["dimensions"][dim_name]["score"]
-        change = a - b
-        change_str = f"\\+{change}" if change >= 0 else f"\\-{abs(change)}"
-        label = dim_name.capitalize()
-        lines.append(f"  {label}: {b} → {a} \\({change_str}\\)")
-
-    if result["suggestions"]:
-        lines.append("\n*Suggestions:*")
-        for i, s in enumerate(result["suggestions"], 1):
-            lines.append(f"  {i}\\. {_escape_md(s)}")
-
-    return "\n".join(lines)
+def _dim_verdict(score: int, dim: str) -> str:
+    thresholds: dict[str, dict[int, str]] = {
+        "clarity": {
+            75: "crystal clear",
+            50: "a bit vague",
+            25: "too ambiguous",
+            0:  "very unclear",
+        },
+        "specificity": {
+            75: "nicely specific",
+            50: "could use more detail",
+            25: "too generic",
+            0:  "very generic",
+        },
+        "structure": {
+            75: "well organised",
+            50: "could be tidier",
+            25: "a bit scattered",
+            0:  "hard to follow",
+        },
+        "completeness": {
+            75: "covers the bases",
+            50: "missing a few things",
+            25: "missing a lot",
+            0:  "very incomplete",
+        },
+    }
+    levels = thresholds.get(dim, {75: "good", 50: "okay", 25: "weak", 0: "poor"})
+    for threshold in sorted(levels.keys(), reverse=True):
+        if score >= threshold:
+            return levels[threshold]
+    return "poor"
 
 
 def _escape_md(text: str) -> str:
@@ -210,6 +261,92 @@ def _escape_md(text: str) -> str:
     return "".join(escaped)
 
 
+def _format_analysis(analysis: dict[str, Any], prompt: str) -> str:
+    """Format an analysis result — conversational, mobile-friendly."""
+    dims = analysis["dimensions"]
+    overall = analysis["overall_score"]
+    task_type = analysis["detected_task_type"]
+    task_emoji = _TASK_EMOJI.get(task_type, "💬")
+    task_label = _TASK_LABEL.get(task_type, task_type.replace("_", " ").title())
+
+    lines = [
+        "🔍 *Prompt Check*\n",
+        f"_{_escape_md(prompt)}_\n",
+        _overall_verdict(overall) + "\n",
+        f"Detected as: {task_emoji} {_escape_md(task_label)}\n",
+        "*What I found:*",
+    ]
+
+    for dim_name, label in [
+        ("clarity",      "Clarity"),
+        ("specificity",  "Specificity"),
+        ("structure",    "Structure"),
+        ("completeness", "Completeness"),
+    ]:
+        score = dims[dim_name]["score"]
+        emoji = _score_emoji(score)
+        verdict = _dim_verdict(score, dim_name)
+        lines.append(f"{emoji} *{label}* — {_escape_md(verdict)}")
+
+    missing = dims["completeness"].get("missing", [])
+    if missing:
+        lines.append("\n💡 *Quick wins:*")
+        for item in missing:
+            lines.append(f"• Add {_escape_md(item.lower())}")
+
+    lines.append("\n_Send your prompt without a command and I'll rewrite it for you\\!_")
+
+    return "\n".join(lines)
+
+
+def _format_optimization(result: dict[str, Any]) -> str:
+    """Format an optimization result — conversational, mobile-friendly."""
+    task_type = result["detected_task_type"]
+    task_emoji = _TASK_EMOJI.get(task_type, "💬")
+    task_label = _TASK_LABEL.get(task_type, task_type.replace("_", " ").title())
+
+    before_score = result["before"]["overall_score"]
+    after_score = result["after"]["overall_score"]
+    diff = after_score - before_score
+    diff_str = f"\\+{diff}" if diff >= 0 else f"\\-{abs(diff)}"
+
+    advice = _MODEL_ADVICE.get(task_type, _MODEL_ADVICE["general"])
+
+    lines = [
+        f"✨ *Your upgraded prompt*\n",
+        f"Detected: {task_emoji} {_escape_md(task_label)}\n",
+        "📋 *Copy this:*",
+        f"```\n{result['optimized_prompt']}\n```\n",
+        f"📈 *Score: {before_score} → {after_score} \\({diff_str}\\)*",
+    ]
+
+    for dim_name, label in [
+        ("clarity",      "Clarity"),
+        ("specificity",  "Specificity"),
+        ("structure",    "Structure"),
+        ("completeness", "Completeness"),
+    ]:
+        b = result["before"]["dimensions"][dim_name]["score"]
+        a = result["after"]["dimensions"][dim_name]["score"]
+        change = a - b
+        change_str = f"\\+{change}" if change >= 0 else f"\\-{abs(change)}"
+        emoji = _score_emoji(a)
+        lines.append(f"  {emoji} {label}: {b} → {a} \\({change_str}\\)")
+
+    lines.append(f"\n🤖 *Best model for this:*")
+    lines.append(
+        f"*{_escape_md(advice['model'])}* at temperature {advice['temp']}\n"
+        f"_{_escape_md(advice['why'])}_"
+    )
+
+    if result["suggestions"]:
+        lines.append("\n💡 *Tips to make it even better:*")
+        for i, s in enumerate(result["suggestions"], 1):
+            lines.append(f"{i}\\. {_escape_md(s)}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Command handlers
 # ---------------------------------------------------------------------------
@@ -217,13 +354,15 @@ def _escape_md(text: str) -> str:
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start — send a welcome message."""
     text = (
-        "*Welcome to the Prompt Optimizer Bot\\!*\n\n"
-        "I help you write better prompts for AI models\\.\n\n"
-        "Send me any prompt and I'll analyze and optimize it, "
-        "or use these commands:\n\n"
-        "/analyze \\<prompt\\> — Analyze prompt quality\n"
-        "/optimize \\<prompt\\> — Full optimization with suggestions\n"
-        "/help — Show usage instructions"
+        "👋 *Hey\\! I'm your Prompt Optimizer\\.*\n\n"
+        "Send me any AI prompt and I'll tell you what's weak about it "
+        "and give you a rewritten version that actually works\\.\n\n"
+        "*How to use me:*\n"
+        "💬 Just send any prompt as a message — I'll rewrite it\n"
+        "🔍 /analyze \\<prompt\\> — See what's wrong with your prompt\n"
+        "✨ /optimize \\<prompt\\> — Get the full upgrade \\+ model advice\n"
+        "❓ /help — Tips and examples\n\n"
+        "_Try it now — just paste a prompt you've been using\\!_"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -231,18 +370,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help — show usage instructions."""
     text = (
-        "*Prompt Optimizer Bot — Help*\n\n"
+        "❓ *How to get the best out of me*\n\n"
+        "*The fastest way:* just send me a prompt as a plain message\\.\n"
+        "I'll rewrite it and tell you which AI model to use\\.\n\n"
         "*Commands:*\n"
-        "/start — Welcome message\n"
-        "/help — This help text\n"
-        "/analyze \\<prompt\\> — Score a prompt on clarity, specificity, structure, and completeness\n"
-        "/optimize \\<prompt\\> — Get an optimized version with before/after scores\n\n"
-        "*Plain text:* Send any message and I'll treat it as a prompt to optimize\\.\n\n"
-        "*Scoring dimensions:*\n"
-        "• *Clarity* — How clear and unambiguous is the prompt?\n"
-        "• *Specificity* — Does it include concrete details?\n"
-        "• *Structure* — Is it well\\-organized?\n"
-        "• *Completeness* — Does it have role, context, format, constraints, examples?"
+        "🔍 /analyze — Quick breakdown of what's strong and weak\n"
+        "✨ /optimize — Full rewrite \\+ score comparison \\+ model recommendation\n\n"
+        "*What I check:*\n"
+        "✅ *Clarity* — Is it specific enough for the AI to understand\\?\n"
+        "🎯 *Specificity* — Does it have concrete details, numbers, names\\?\n"
+        "🏗 *Structure* — Is it organised with a clear ask\\?\n"
+        "📋 *Completeness* — Does it have a role, context, format, constraints\\?\n\n"
+        "*Example prompts to try:*\n"
+        "`write me a story about AI`\n"
+        "`summarize this article for me`\n"
+        "`help me write a Python function`"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.MARKDOWN_V2)
 
@@ -253,7 +395,8 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     prompt = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not prompt:
         await update.message.reply_text(
-            "Please provide a prompt to analyze\\.\n\nUsage: `/analyze write me a story about AI`",
+            "🔍 Give me something to check\\!\n\n"
+            "Usage: `/analyze write me a story about AI`",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
@@ -269,7 +412,8 @@ async def optimize_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     prompt = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
     if not prompt:
         await update.message.reply_text(
-            "Please provide a prompt to optimize\\.\n\nUsage: `/optimize write me a story about AI`",
+            "✨ Give me a prompt to upgrade\\!\n\n"
+            "Usage: `/optimize write me a story about AI`",
             parse_mode=ParseMode.MARKDOWN_V2,
         )
         return
