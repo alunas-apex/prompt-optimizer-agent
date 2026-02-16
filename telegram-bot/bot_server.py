@@ -1,27 +1,30 @@
 """Telegram Bot Server for the Prompt Optimizer Agent.
 
-Runs a FastAPI application that receives Telegram webhook updates and
-dispatches them to the handlers defined in handlers.py.
+Supports two modes:
+  - **Polling mode** (default): The bot long-polls the Telegram API for
+    updates.  No public URL required — ideal for development and environments
+    without a stable domain.
+  - **Webhook mode**: Runs a FastAPI server that receives Telegram webhook
+    POSTs.  Activate by setting WEBHOOK_URL in the environment.
 
 Usage:
-    # Set TELEGRAM_BOT_TOKEN in .env, then:
-    uvicorn telegram-bot.bot_server:app --host 0.0.0.0 --port 8443
+    # Polling mode (default):
+    python -m telegram-bot.bot_server
 
-    # Register the webhook with Telegram:
-    curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<YOUR_DOMAIN>/webhook"
+    # Webhook mode:
+    WEBHOOK_URL=https://yourdomain.com/webhook python -m telegram-bot.bot_server
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import signal
 import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Response
-from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -51,6 +54,7 @@ from handlers import (
 load_dotenv(_PROJECT_ROOT / ".env")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # empty → polling mode
 WEBHOOK_PATH = "/webhook"
 
 logger = logging.getLogger(__name__)
@@ -64,108 +68,131 @@ if not BOT_TOKEN:
 
 
 # ---------------------------------------------------------------------------
-# Telegram Application (python-telegram-bot)
+# Shared: register handlers on an Application builder
 # ---------------------------------------------------------------------------
 
-_bot_initialized = False
-
-
-def _build_telegram_app() -> Application:
-    """Build and configure the python-telegram-bot Application."""
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .updater(None)       # We handle updates via webhook, not polling
-        .build()
-    )
-
-    # Register command handlers
+def _register_handlers(app: Application) -> None:
+    """Attach all command and message handlers to *app*."""
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("analyze", analyze_command))
     app.add_handler(CommandHandler("optimize", optimize_command))
-
-    # Plain text fallback — treat any non-command text as a prompt to optimize
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, plain_text_handler))
 
-    return app
 
+# ---------------------------------------------------------------------------
+# Polling mode
+# ---------------------------------------------------------------------------
 
-telegram_app = _build_telegram_app()
+def run_polling() -> None:
+    """Start the bot in long-polling mode (no public URL needed)."""
+    logger.info("Starting bot in POLLING mode …")
+
+    app = Application.builder().token(BOT_TOKEN).build()
+    _register_handlers(app)
+
+    # Delete any leftover webhook so polling works
+    async def _clear_webhook(app: Application) -> None:
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        me = await app.bot.get_me()
+        logger.info("Bot identity: @%s (id=%s)", me.username, me.id)
+
+    app.post_init = _clear_webhook
+
+    app.run_polling(drop_pending_updates=True)
 
 
 # ---------------------------------------------------------------------------
-# FastAPI application
+# Webhook mode (FastAPI)
 # ---------------------------------------------------------------------------
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize and shut down the Telegram application."""
-    global _bot_initialized
-    try:
-        await telegram_app.initialize()
-        await telegram_app.start()
-        _bot_initialized = True
-        logger.info("Telegram bot started (webhook mode)")
-    except Exception:
-        logger.warning(
-            "Could not fully initialize Telegram bot (API may be unreachable). "
-            "The server will start anyway — webhook processing will attempt "
-            "lazy initialization on first request.",
-            exc_info=True,
-        )
-    yield
-    if _bot_initialized:
-        await telegram_app.stop()
-        await telegram_app.shutdown()
-        logger.info("Telegram bot stopped")
+def run_webhook() -> None:
+    """Start the bot in webhook mode behind a FastAPI server."""
+    from contextlib import asynccontextmanager
 
+    from fastapi import FastAPI, Request, Response
+    from telegram import Update
 
-app = FastAPI(
-    title="Prompt Optimizer Telegram Bot",
-    description="Webhook receiver for the Prompt Optimizer Telegram bot",
-    lifespan=lifespan,
-)
+    logger.info("Starting bot in WEBHOOK mode (url=%s) …", WEBHOOK_URL)
 
+    telegram_app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .updater(None)
+        .build()
+    )
+    _register_handlers(telegram_app)
 
-@app.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request) -> Response:
-    """Receive an update from Telegram and dispatch it."""
-    global _bot_initialized
+    _bot_initialized = False
 
-    # Lazy initialization: retry if startup failed
-    if not _bot_initialized:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        nonlocal _bot_initialized
         try:
             await telegram_app.initialize()
             await telegram_app.start()
+            await telegram_app.bot.set_webhook(url=WEBHOOK_URL + WEBHOOK_PATH)
             _bot_initialized = True
-            logger.info("Telegram bot initialized on first webhook request")
+            logger.info("Telegram bot started (webhook mode)")
         except Exception:
-            logger.error("Still cannot initialize Telegram bot", exc_info=True)
-            return Response(status_code=503, content="Bot not initialized")
+            logger.warning(
+                "Could not fully initialize Telegram bot (API may be unreachable). "
+                "The server will start anyway.",
+                exc_info=True,
+            )
+        yield
+        if _bot_initialized:
+            await telegram_app.bot.delete_webhook()
+            await telegram_app.stop()
+            await telegram_app.shutdown()
+            logger.info("Telegram bot stopped")
 
-    data = await request.json()
-    update = Update.de_json(data=data, bot=telegram_app.bot)
-    await telegram_app.process_update(update)
-    return Response(status_code=200)
+    fastapi_app = FastAPI(
+        title="Prompt Optimizer Telegram Bot",
+        description="Webhook receiver for the Prompt Optimizer Telegram bot",
+        lifespan=lifespan,
+    )
 
+    @fastapi_app.post(WEBHOOK_PATH)
+    async def telegram_webhook(request: Request) -> Response:
+        nonlocal _bot_initialized
+        if not _bot_initialized:
+            try:
+                await telegram_app.initialize()
+                await telegram_app.start()
+                _bot_initialized = True
+            except Exception:
+                logger.error("Cannot initialize Telegram bot", exc_info=True)
+                return Response(status_code=503, content="Bot not initialized")
+        data = await request.json()
+        update = Update.de_json(data=data, bot=telegram_app.bot)
+        await telegram_app.process_update(update)
+        return Response(status_code=200)
 
-@app.get("/health")
-async def health_check():
-    """Simple health-check endpoint."""
-    return {
-        "status": "ok",
-        "bot_configured": bool(BOT_TOKEN),
-        "bot_initialized": _bot_initialized,
-    }
+    @fastapi_app.get("/health")
+    async def health_check():
+        return {
+            "status": "ok",
+            "bot_configured": bool(BOT_TOKEN),
+            "bot_initialized": _bot_initialized,
+        }
 
-
-# ---------------------------------------------------------------------------
-# Entry point (for direct execution / development)
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("BOT_PORT", "8443"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(fastapi_app, host="0.0.0.0", port=port)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    if not BOT_TOKEN:
+        logger.error("Cannot start: TELEGRAM_BOT_TOKEN is not set in .env")
+        sys.exit(1)
+
+    if WEBHOOK_URL:
+        run_webhook()
+    else:
+        run_polling()
