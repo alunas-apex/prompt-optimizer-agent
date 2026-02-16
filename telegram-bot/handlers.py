@@ -149,7 +149,7 @@ def _format_analysis(analysis: dict[str, Any], prompt: str) -> str:
         quality = "Fair"
 
     lines = [
-        f"*Prompt Analysis* — {quality} ({overall}/100)\n",
+        f"*Prompt Analysis* — {quality} \\({overall}/100\\)\n",
         f"Prompt: _{_escape_md(prompt)}_\n",
         f"Task type: `{analysis['detected_task_type']}`\n",
         "*Dimension Scores:*",
