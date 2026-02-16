@@ -172,12 +172,13 @@ def _format_optimization(result: dict[str, Any]) -> str:
     after_score = result["after"]["overall_score"]
     diff = after_score - before_score
 
+    diff_str = f"\\+{diff}" if diff >= 0 else f"\\-{abs(diff)}"
     lines = [
         "*Prompt Optimization Results*\n",
         f"Task type: `{result['detected_task_type']}`\n",
         f"*Original prompt:*\n_{_escape_md(result['original_prompt'])}_\n",
-        f"*Optimized prompt:*\n`{result['optimized_prompt']}`\n",
-        f"*Score: {before_score} → {after_score} \\(\\+{diff}\\)*\n",
+        f"*Optimized prompt:*\n```\n{result['optimized_prompt']}\n```\n",
+        f"*Score: {before_score} → {after_score} \\({diff_str}\\)*\n",
         "*Breakdown:*",
     ]
 
@@ -185,9 +186,9 @@ def _format_optimization(result: dict[str, Any]) -> str:
         b = result["before"]["dimensions"][dim_name]["score"]
         a = result["after"]["dimensions"][dim_name]["score"]
         change = a - b
-        sign = "\\+" if change > 0 else ""
+        change_str = f"\\+{change}" if change >= 0 else f"\\-{abs(change)}"
         label = dim_name.capitalize()
-        lines.append(f"  {label}: {b} → {a} \\({sign}{change}\\)")
+        lines.append(f"  {label}: {b} → {a} \\({change_str}\\)")
 
     if result["suggestions"]:
         lines.append("\n*Suggestions:*")
