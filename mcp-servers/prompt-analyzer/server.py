@@ -463,6 +463,598 @@ async def suggest_model_parameters(task_type: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Platform catalog — 15 platforms, current as of February 2026
+# ---------------------------------------------------------------------------
+
+PLATFORM_CATALOG: dict[str, dict] = {
+    # ── Flagship ────────────────────────────────────────────────────────────
+    "claude_sonnet_api": {
+        "label": "Claude Sonnet 4.5 (API)",
+        "model_id": "claude-sonnet-4-5-20250929",
+        "tier": "flagship",
+        "input_mtok": 3.00,
+        "output_mtok": 15.00,
+        "context_k": 200,
+        "speed": "medium",
+        "cost_note": "~$0.02/request",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 93, "code_generation": 95, "data_analysis": 84,
+            "summarization": 85, "question_answering": 78, "translation": 80,
+            "general": 90,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "creative_writing": {"temperature": 0.9, "max_tokens": 4096},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 8192},
+            "data_analysis":    {"temperature": 0.3, "max_tokens": 4096},
+            "summarization":    {"temperature": 0.3, "max_tokens": 2048},
+            "question_answering": {"temperature": 0.5, "max_tokens": 2048},
+            "translation":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["instruction following", "nuanced writing", "coding", "safety"],
+        "best_when": "Reliable high-quality output for most tasks",
+        "when_to_skip": "Need real-time web data or have a very tight budget",
+    },
+    "claude_opus_api": {
+        "label": "Claude Opus 4.6 (API)",
+        "model_id": "claude-opus-4-6",
+        "tier": "flagship",
+        "input_mtok": 5.00,
+        "output_mtok": 25.00,
+        "context_k": 1000,
+        "speed": "slow",
+        "cost_note": "~$0.03/request",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": True,
+        "web_search": False,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 88, "code_generation": 90, "data_analysis": 95,
+            "summarization": 88, "question_answering": 85, "translation": 83,
+            "general": 93,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "creative_writing":   {"temperature": 0.9, "max_tokens": 4096},
+            "code_generation":    {"temperature": 0.2, "max_tokens": 8192},
+            "data_analysis":      {"temperature": 0.2, "max_tokens": 8192, "extended_thinking": True},
+            "question_answering": {"temperature": 0.4, "max_tokens": 4096, "extended_thinking": True},
+        },
+        "strengths": ["deep reasoning", "1M context", "extended thinking", "complex analysis"],
+        "best_when": "Maximum quality needed, cost is secondary, or analysing very long documents",
+        "when_to_skip": "Simple tasks — Sonnet gives 95% of the quality at 40% of the cost",
+    },
+    "claude_sonnet_ui": {
+        "label": "Claude Sonnet 4.5 (claude.ai)",
+        "model_id": None,
+        "tier": "flagship",
+        "input_mtok": None,
+        "output_mtok": None,
+        "context_k": 200,
+        "speed": "medium",
+        "cost_note": "Free / Pro $20/mo",
+        "api": False,
+        "ui_free": True,
+        "extended_thinking": True,
+        "web_search": True,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 91, "code_generation": 88, "data_analysis": 83,
+            "summarization": 84, "question_answering": 82, "translation": 79,
+            "general": 89,
+        },
+        "default_settings": {},
+        "task_settings": {},
+        "strengths": ["artifacts", "file upload", "web search", "computer use", "free tier"],
+        "best_when": "Interactive use, quick experiments, or you want file/web/artifact features without code",
+        "when_to_skip": "Automation or production pipelines — use the API instead",
+    },
+    "gpt52": {
+        "label": "GPT-5.2 (OpenAI)",
+        "model_id": "gpt-5.2",
+        "tier": "flagship",
+        "input_mtok": 1.75,
+        "output_mtok": 14.00,
+        "context_k": 256,
+        "speed": "medium",
+        "cost_note": "~$0.02/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": True,
+        "web_search": True,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 87, "code_generation": 85, "data_analysis": 83,
+            "summarization": 80, "question_answering": 84, "translation": 92,
+            "general": 88,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "creative_writing": {"temperature": 1.0, "max_tokens": 4096},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 8192},
+            "data_analysis":    {"temperature": 0.3, "max_tokens": 4096},
+            "translation":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["multilingual", "image generation", "code interpreter", "broad knowledge"],
+        "best_when": "Translation, multilingual tasks, or when you need DALL-E image generation alongside text",
+        "when_to_skip": "Complex instruction-following — Claude edges it out; deep reasoning — use o3",
+    },
+    "o3": {
+        "label": "o3 (OpenAI reasoning)",
+        "model_id": "o3",
+        "tier": "flagship",
+        "input_mtok": 2.00,
+        "output_mtok": 8.00,
+        "context_k": 200,
+        "speed": "slow",
+        "cost_note": "~$0.01–$0.05/request (reasoning tokens multiply cost)",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": True,
+        "web_search": False,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 45, "code_generation": 88, "data_analysis": 96,
+            "summarization": 60, "question_answering": 80, "translation": 65,
+            "general": 78,
+        },
+        "default_settings": {"temperature": 0.1, "max_tokens": 4096},
+        "task_settings": {
+            "code_generation": {"temperature": 0.1, "max_tokens": 8192},
+            "data_analysis":   {"temperature": 0.1, "max_tokens": 8192},
+        },
+        "strengths": ["logic", "maths", "multi-step reasoning", "algorithm design"],
+        "best_when": "Maths, algorithms, rigorous logical analysis, or structured data problems",
+        "when_to_skip": "Creative writing, translation, or simple tasks — reasoning overhead wastes money",
+    },
+    "gemini25_pro": {
+        "label": "Gemini 2.5 Pro (Google)",
+        "model_id": "gemini-2.5-pro",
+        "tier": "flagship",
+        "input_mtok": 1.25,
+        "output_mtok": 10.00,
+        "context_k": 1000,
+        "speed": "medium",
+        "cost_note": "~$0.01/request",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": True,
+        "web_search": True,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 76, "code_generation": 81, "data_analysis": 91,
+            "summarization": 90, "question_answering": 88, "translation": 87,
+            "general": 85,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "data_analysis":    {"temperature": 0.2, "max_tokens": 8192},
+            "summarization":    {"temperature": 0.3, "max_tokens": 4096},
+            "question_answering": {"temperature": 0.4, "max_tokens": 4096},
+            "translation":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["1M token context", "Google Search grounding", "multimodal", "long documents"],
+        "best_when": "Summarising or analysing huge documents, or when grounded Google Search answers matter",
+        "when_to_skip": "Creative writing or coding — Claude Sonnet wins those",
+    },
+    "grok4": {
+        "label": "Grok 4 (xAI)",
+        "model_id": "grok-4",
+        "tier": "flagship",
+        "input_mtok": 3.00,
+        "output_mtok": 15.00,
+        "context_k": 256,
+        "speed": "medium",
+        "cost_note": "~$0.02/request",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": True,
+        "web_search": True,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 72, "code_generation": 75, "data_analysis": 72,
+            "summarization": 70, "question_answering": 88, "translation": 68,
+            "general": 78,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "question_answering": {"temperature": 0.4, "max_tokens": 2048},
+        },
+        "strengths": ["real-time X/Twitter data", "current events", "web search", "DeepSearch"],
+        "best_when": "Questions about current events, social trends, or X/Twitter data",
+        "when_to_skip": "Creative, coding, or analysis — better specialist models exist",
+    },
+    # ── Balanced ─────────────────────────────────────────────────────────────
+    "claude_haiku_api": {
+        "label": "Claude Haiku 4.5 (API)",
+        "model_id": "claude-haiku-4-5-20251001",
+        "tier": "balanced",
+        "input_mtok": 1.00,
+        "output_mtok": 5.00,
+        "context_k": 200,
+        "speed": "fast",
+        "cost_note": "~$0.006/request",
+        "api": True,
+        "ui_free": False,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 70, "code_generation": 74, "data_analysis": 62,
+            "summarization": 80, "question_answering": 62, "translation": 73,
+            "general": 72,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 2048},
+        "task_settings": {
+            "creative_writing": {"temperature": 0.9, "max_tokens": 2048},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 4096},
+            "summarization":    {"temperature": 0.3, "max_tokens": 2048},
+            "translation":      {"temperature": 0.3, "max_tokens": 2048},
+        },
+        "strengths": ["speed", "cost-efficiency", "high throughput"],
+        "best_when": "High-volume tasks, quick drafts, or when latency matters more than peak quality",
+        "when_to_skip": "Complex reasoning or nuanced writing — spend the extra on Sonnet",
+    },
+    "gemini25_flash": {
+        "label": "Gemini 2.5 Flash (Google)",
+        "model_id": "gemini-2.5-flash",
+        "tier": "balanced",
+        "input_mtok": 0.15,
+        "output_mtok": 0.60,
+        "context_k": 1000,
+        "speed": "fast",
+        "cost_note": "~$0.001/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": True,
+        "web_search": True,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 73, "code_generation": 72, "data_analysis": 76,
+            "summarization": 88, "question_answering": 78, "translation": 86,
+            "general": 80,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 2048},
+        "task_settings": {
+            "creative_writing": {"temperature": 1.0, "max_tokens": 2048},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 4096},
+            "summarization":    {"temperature": 0.3, "max_tokens": 4096},
+            "translation":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["1M context at low cost", "speed", "Google Search grounding", "translation"],
+        "best_when": "Budget-conscious tasks needing long context, summarisation, or translation at scale",
+        "when_to_skip": "When you need peak quality — Flash trades some accuracy for speed/cost",
+    },
+    "deepseek_v3": {
+        "label": "DeepSeek V3 (API)",
+        "model_id": "deepseek-chat",
+        "tier": "balanced",
+        "input_mtok": 0.27,
+        "output_mtok": 1.10,
+        "context_k": 128,
+        "speed": "fast",
+        "cost_note": "~$0.001/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": False,
+        "task_scores": {
+            "creative_writing": 70, "code_generation": 88, "data_analysis": 75,
+            "summarization": 83, "question_answering": 70, "translation": 90,
+            "general": 78,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "creative_writing": {"temperature": 0.9, "max_tokens": 4096},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 8192},
+            "summarization":    {"temperature": 0.3, "max_tokens": 4096},
+            "translation":      {"temperature": 0.2, "max_tokens": 4096},
+        },
+        "strengths": ["exceptional value", "strong coder", "best-in-class translation", "open-weight"],
+        "best_when": "When you need GPT-4-class quality at ~10x lower cost, especially for code or translation",
+        "when_to_skip": "Vision tasks (no image support) or real-time info (no web search)",
+    },
+    "deepseek_r1": {
+        "label": "DeepSeek R1 (reasoning)",
+        "model_id": "deepseek-reasoner",
+        "tier": "balanced",
+        "input_mtok": 0.55,
+        "output_mtok": 2.19,
+        "context_k": 128,
+        "speed": "slow",
+        "cost_note": "~$0.003/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": True,
+        "web_search": False,
+        "vision": False,
+        "task_scores": {
+            "creative_writing": 48, "code_generation": 84, "data_analysis": 86,
+            "summarization": 65, "question_answering": 72, "translation": 72,
+            "general": 70,
+        },
+        "default_settings": {"temperature": 0.1, "max_tokens": 4096},
+        "task_settings": {
+            "code_generation": {"temperature": 0.1, "max_tokens": 8192},
+            "data_analysis":   {"temperature": 0.1, "max_tokens": 8192},
+        },
+        "strengths": ["o1-level reasoning", "maths", "algorithms", "budget reasoning model"],
+        "best_when": "o3-class reasoning tasks at ~75% lower cost — best value for logic and maths",
+        "when_to_skip": "Creative, translation, or tasks that don't benefit from chain-of-thought",
+    },
+    "mistral_large": {
+        "label": "Mistral Large 3 (API)",
+        "model_id": "mistral-large-latest",
+        "tier": "balanced",
+        "input_mtok": 0.50,
+        "output_mtok": 1.50,
+        "context_k": 128,
+        "speed": "fast",
+        "cost_note": "~$0.002/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": False,
+        "task_scores": {
+            "creative_writing": 66, "code_generation": 80, "data_analysis": 68,
+            "summarization": 73, "question_answering": 64, "translation": 79,
+            "general": 72,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 4096},
+        "task_settings": {
+            "creative_writing": {"temperature": 0.9, "max_tokens": 4096},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 8192},
+            "translation":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["open-weight", "EU-hosted option", "strong EU languages", "cost-effective coding"],
+        "best_when": "EU data residency requirements, European language tasks, or open-weight self-hosting",
+        "when_to_skip": "Vision tasks or when you need web search — Mistral has neither",
+    },
+    # ── Specialized ──────────────────────────────────────────────────────────
+    "perplexity_sonar_pro": {
+        "label": "Perplexity Sonar Pro",
+        "model_id": "sonar-pro",
+        "tier": "specialized",
+        "input_mtok": 3.00,
+        "output_mtok": 15.00,
+        "context_k": 200,
+        "speed": "medium",
+        "cost_note": "~$0.02/request + web search",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": False,
+        "web_search": True,
+        "vision": False,
+        "task_scores": {
+            "creative_writing": 48, "code_generation": 38, "data_analysis": 68,
+            "summarization": 62, "question_answering": 96, "translation": 55,
+            "general": 65,
+        },
+        "default_settings": {"temperature": 0.3, "max_tokens": 2048},
+        "task_settings": {
+            "question_answering": {"temperature": 0.3, "max_tokens": 2048},
+            "data_analysis":      {"temperature": 0.3, "max_tokens": 4096},
+        },
+        "strengths": ["real-time web search", "citations", "current events", "research reports"],
+        "best_when": "Any question needing up-to-date information with cited sources",
+        "when_to_skip": "Creative writing, coding, or anything that doesn't benefit from live web data",
+    },
+    "groq_llama": {
+        "label": "Groq (Llama 3.3 70B)",
+        "model_id": "llama-3.3-70b-versatile",
+        "tier": "specialized",
+        "input_mtok": 0.59,
+        "output_mtok": 0.79,
+        "context_k": 128,
+        "speed": "very_fast",
+        "cost_note": "~$0.001/request",
+        "api": True,
+        "ui_free": True,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": False,
+        "task_scores": {
+            "creative_writing": 62, "code_generation": 70, "data_analysis": 58,
+            "summarization": 72, "question_answering": 58, "translation": 64,
+            "general": 65,
+        },
+        "default_settings": {"temperature": 0.7, "max_tokens": 2048},
+        "task_settings": {
+            "creative_writing": {"temperature": 0.9, "max_tokens": 2048},
+            "code_generation":  {"temperature": 0.2, "max_tokens": 4096},
+            "summarization":    {"temperature": 0.3, "max_tokens": 2048},
+        },
+        "strengths": ["600+ tokens/second", "ultra-low latency", "free tier", "open-weight"],
+        "best_when": "Latency is critical (streaming, real-time apps) and quality can be mid-tier",
+        "when_to_skip": "Complex tasks where quality matters — LPU speed doesn't offset the model size gap",
+    },
+    "github_copilot": {
+        "label": "GitHub Copilot Pro+",
+        "model_id": None,
+        "tier": "specialized",
+        "input_mtok": None,
+        "output_mtok": None,
+        "context_k": 200,
+        "speed": "fast",
+        "cost_note": "$39/mo flat (unlimited IDE use)",
+        "api": False,
+        "ui_free": False,
+        "extended_thinking": False,
+        "web_search": False,
+        "vision": True,
+        "task_scores": {
+            "creative_writing": 28, "code_generation": 93, "data_analysis": 55,
+            "summarization": 40, "question_answering": 35, "translation": 22,
+            "general": 38,
+        },
+        "default_settings": {},
+        "task_settings": {},
+        "strengths": ["repo-aware", "multi-file agent mode", "IDE-native", "MCP integration"],
+        "best_when": "Day-to-day coding in VS Code/JetBrains — context-aware across your whole repo",
+        "when_to_skip": "Anything outside code — it's an IDE tool, not a general assistant",
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Complete prompt generation — fills in all sections with usable defaults
+# ---------------------------------------------------------------------------
+
+_COMPLETE_DEFAULTS: dict[str, dict[str, str]] = {
+    "creative_writing": {
+        "role":        "You are a talented creative writer who crafts vivid, character-driven fiction with strong narrative arcs and compelling dialogue.",
+        "context":     "Context: Standalone creative writing task. No prior work to continue.",
+        "format":      "Format: Prose narrative, 500–800 words, third-person perspective.",
+        "constraints": "Constraints: Open with a strong hook, build to a clear conflict, end with a satisfying resolution.",
+        "example":     "Example style: Vivid sensory detail, show don't tell, varied sentence rhythm.",
+    },
+    "code_generation": {
+        "role":        "You are an expert software engineer who writes clean, efficient, well-tested code with clear inline comments.",
+        "context":     "Context: Software development task. Target audience: professional developers.",
+        "format":      "Format: Code block with a brief explanation of the approach above and usage example below.",
+        "constraints": "Constraints: Follow language best practices, include error handling, explain non-obvious decisions.",
+        "example":     "Example: Include a minimal working example that can be run immediately.",
+    },
+    "data_analysis": {
+        "role":        "You are a data analysis expert who delivers accurate statistical insights with clear methodology.",
+        "context":     "Context: Data analysis task. Assume the audience has basic statistical literacy.",
+        "format":      "Format: Structured report — Key Findings, Supporting Data, Methodology, Recommendations.",
+        "constraints": "Constraints: Use precise numbers, state assumptions explicitly, flag any data quality issues.",
+        "example":     "Example: Lead with the single most important insight, then support with data.",
+    },
+    "summarization": {
+        "role":        "You are an expert summariser who distils content to its essential points without losing nuance or accuracy.",
+        "context":     "Context: Text summarisation task. Preserve the author's intent and tone.",
+        "format":      "Format: TL;DR (1–2 sentences) → Key Points (bullet list) → Brief Overview (2–3 sentences).",
+        "constraints": "Constraints: Do not introduce information not in the source. Keep to 20% of original length.",
+        "example":     "Example: Start with the single most important takeaway.",
+    },
+    "question_answering": {
+        "role":        "You are a knowledgeable research assistant who gives accurate, well-sourced answers with appropriate caveats.",
+        "context":     "Context: Factual Q&A task. The user needs a reliable, actionable answer.",
+        "format":      "Format: Direct answer first (1–2 sentences), then supporting explanation, then sources or caveats.",
+        "constraints": "Constraints: State your confidence level. If uncertain, say so and suggest how to verify.",
+        "example":     "Example: Answer → Evidence → Confidence level → Follow-up suggestion.",
+    },
+    "translation": {
+        "role":        "You are a professional translator with deep expertise in cultural nuance, idiom, and register.",
+        "context":     "Context: Translation task. Preserve the source text's tone, style, and cultural meaning.",
+        "format":      "Format: Translated text only, followed by brief Translator's Notes on significant choices.",
+        "constraints": "Constraints: Match formality level of the original. Flag untranslatable terms with alternatives.",
+        "example":     "Example: If idiomatic, choose a natural target-language equivalent over a literal translation.",
+    },
+    "general": {
+        "role":        "You are a helpful, accurate, and thoughtful assistant who gives clear, well-structured responses.",
+        "context":     "Context: General assistance task.",
+        "format":      "Format: Clear response with headers if multi-part; bullet points for lists; plain prose otherwise.",
+        "constraints": "Constraints: Be concise but complete. Ask one clarifying question if the request is ambiguous.",
+        "example":     "Example: Address the core request first, then add relevant context or caveats.",
+    },
+}
+
+
+def _generate_complete_prompt(prompt: str, task_type: str, analysis: dict) -> tuple[str, str]:
+    """Return (complete_prompt, template_prompt) for the given prompt and analysis.
+
+    complete_prompt  — fully formed, copy-paste ready, no placeholders.
+    template_prompt  — same structure with [BRACKET] placeholders for customisation.
+    """
+    defaults = _COMPLETE_DEFAULTS.get(task_type, _COMPLETE_DEFAULTS["general"])
+    missing = analysis["dimensions"]["completeness"].get("missing", [])
+
+    # Build complete version — every section filled with a real default
+    complete_parts: list[str] = []
+    template_parts: list[str] = []
+
+    # Role
+    if "Role Definition" in missing:
+        complete_parts.append(defaults["role"])
+        template_parts.append(f"[Role]: {defaults['role'].split('.')[0]}.")
+
+    # Context
+    if "Context Or Background" in missing:
+        complete_parts.append(defaults["context"])
+        template_parts.append("[Context]: (Add relevant background — who you are, what this is for)")
+
+    # Main task — always present
+    complete_parts.append(f"Task: {prompt}")
+    template_parts.append(f"[Task]: {prompt}")
+
+    # Output format
+    if "Output Format" in missing:
+        complete_parts.append(defaults["format"])
+        template_parts.append("[Format]: (e.g. prose / bullet list / JSON / markdown — include length)")
+
+    # Constraints
+    if "Constraints" in missing:
+        complete_parts.append(defaults["constraints"])
+        template_parts.append("[Constraints]: (e.g. tone, length limit, style requirements)")
+
+    # Examples
+    if "Examples" in missing:
+        complete_parts.append(defaults["example"])
+        template_parts.append("[Example]: (Provide a short example of the output you want)")
+
+    return "\n".join(complete_parts), "\n".join(template_parts)
+
+
+# ---------------------------------------------------------------------------
+# Platform evaluation
+# ---------------------------------------------------------------------------
+
+def _evaluate_platforms(task_type: str, top_n: int = 5) -> list[dict]:
+    """Return top_n platforms for task_type, sorted by quality score."""
+    results = []
+    for pid, p in PLATFORM_CATALOG.items():
+        score = p["task_scores"].get(task_type, p["task_scores"].get("general", 50))
+        settings = {**p["default_settings"], **p["task_settings"].get(task_type, {})}
+        results.append({
+            "id": pid,
+            "label": p["label"],
+            "model_id": p.get("model_id"),
+            "tier": p["tier"],
+            "quality_score": score,
+            "speed": p["speed"],
+            "cost_note": p["cost_note"],
+            "api": p["api"],
+            "ui_free": p["ui_free"],
+            "extended_thinking": p.get("extended_thinking", False),
+            "web_search": p.get("web_search", False),
+            "settings": settings,
+            "strengths": p["strengths"],
+            "best_when": p["best_when"],
+            "when_to_skip": p["when_to_skip"],
+        })
+    results.sort(key=lambda x: x["quality_score"], reverse=True)
+    return results[:top_n]
+
+
+@mcp.tool()
+async def evaluate_platforms(prompt: str, task_type: str = "") -> dict[str, Any]:
+    """Evaluate and rank all platforms for the given prompt and task type.
+
+    Returns the top 5 platforms with quality scores, recommended settings,
+    cost estimates, and plain-English guidance on when to use each.
+    """
+    if not task_type:
+        task_type = _detect_task_type(prompt)
+    platforms = _evaluate_platforms(task_type)
+    return {
+        "task_type": task_type,
+        "top_platforms": platforms,
+        "total_evaluated": len(PLATFORM_CATALOG),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
